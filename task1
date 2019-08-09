@@ -1,0 +1,103 @@
+- hosts: '{{ target }}'
+  user: root
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        state: present
+      when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'
+  
+    - name: Install software for package compile (deb)
+      apt:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - build-essential
+          - checkinstall
+          - unzip
+      when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'
+
+    - name: Install software for package compile (rpm)
+      yum: 
+        name: "{{ packages }}" 
+        state: present
+      vars:
+        packages:
+          - "@Development tools"
+          - unzip
+          - yum-utils
+          - rpm-build
+          - rpmdevtools
+      when: ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'Red Hat Enterprise Linux'
+
+    - name: Install checkinstall (rpm)      
+      yum: 
+        name: https://filebox.ece.vt.edu/~mclint/puppet/files/checkinstall-1.6.2-3.el6.1.x86_64.rpm
+        state: present
+      when: ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'Red Hat Enterprise Linux'
+
+    - name: Create some additional folders
+      command: rpmdev-setuptree
+      when: ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'Red Hat Enterprise Linux'      
+
+    - name: Download redis'es sources with check (sha256)
+      get_url:
+        url: http://download.redis.io/releases/redis-5.0.5.tar.gz
+        dest: /tmp/redis-5.0.5.tar.gz
+        checksum: sha256:2139009799d21d8ff94fc40b7f36ac46699b9e1254086299f8d3b223ca54a375
+
+    - name: Extract archive
+      unarchive:
+        src: /tmp/redis-5.0.5.tar.gz
+        remote_src: yes
+        dest: /tmp
+
+    - name: Build redis
+      make:
+        chdir: /tmp/redis-5.0.5
+
+    - name: Build and install package
+      command: checkinstall --default --showinstall=no
+      args:
+         chdir: /tmp/redis-5.0.5/
+
+    - name: Add NGINX official repository key (deb)
+      apt_key:
+        url: https://nginx.org/keys/nginx_signing.key
+        state: present
+      when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'
+
+    - name: Add NGINX official repository (deb)
+      apt_repository:
+        repo: deb http://nginx.org/packages/debian {{ ansible_facts['distribution_release'] }} nginx
+        state: present    
+      when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'
+
+    - name: Add NGINX official repository (rpm)
+      yum_repository:
+        name: nginx-stable
+        description: nginx stable repo
+        baseurl: http://nginx.org/packages/centos/$releasever/$basearch/
+        gpgkey: https://nginx.org/keys/nginx_signing.key
+        gpgcheck: yes
+        state: present
+      when: ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'Red Hat Enterprise Linux'      
+
+    - name: Update apt cache (deb)
+      apt:
+        update_cache: yes
+        state: present
+      when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'
+        
+    - name: Install NGINX (deb)
+      apt:
+        name: nginx=1.16.0-1~{{ ansible_facts['distribution']_release }}
+        state: present
+      when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'
+
+    - name: Install NGINX (rpm)
+      yum:
+        name: nginx-1.16.0
+        state: present
+      when: ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'Red Hat Enterprise Linux'      
