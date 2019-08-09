@@ -1,0 +1,162 @@
+- hosts: {{ target }}
+  user: root
+  tasks:
+    - name: Update apt cache (deb)
+      apt:
+        update_cache: yes
+        state: present
+      when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'
+
+    - name: Install software start kit (deb)
+      apt:
+        name: "{{ packages }}"
+      vars:
+        packages:
+          - software-properties-common
+          - dirmngr
+          - apt-transport-https
+          - sudo
+          - curl
+          - python-pip
+          - python-virtualenv
+          - python-setuptools
+      when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'
+
+    - name: Install software start kit (rpm)
+      yum:
+        name: "{{ packages }}"
+      vars:
+        packages:
+          - sudo
+          - curl
+          - epel-release
+      when: ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'Red Hat Enterprise Linux'
+
+    - name: Install software from epel (rpm)
+      yum:
+        name: "{{ packages }}"
+      vars:
+        packages:
+          - python-pip
+          - python-virtualenv
+          - python-setuptools
+      when: ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'Red Hat Enterprise Linux'
+
+    - name: Add nodesource repository (deb)
+      command: curl -sL https://deb.nodesource.com/setup_10.x | bash -
+      when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'
+
+    - name: Add nodesource repository (rpm)
+      command: curl -sL https://rpm.nodesource.com/setup_10.x | bash -
+      when: ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'Red Hat Enterprise Linux'    
+
+    - name: Add MariaDB repository
+      command: curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash -
+      when: ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'Red Hat Enterprise Linux'
+
+    - name: Update apt cache (deb)
+      apt:
+        update_cache: yes
+        state: present
+      when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'    
+
+    - name: Install rest of software
+      package:
+        name: "{{ packages }}"
+      vars:
+        packages:
+          - mariadb-server
+          - mariadb-client
+          - nodejs
+
+    - name: Download and extract archive
+      unarchive:
+        src: https://github.com/Requarks/wiki/releases/download/2.0.0-beta.241/wiki-js.tar.gz
+        dest: /var/www/wiki/
+        remote_src: yes
+
+    - name: make config
+      blockinfile:
+        path: /var/www/wiki/config.yml
+        create: yes
+        block: |
+          port: 3000
+          db:
+            type: mariadb
+            host: localhost
+            port: 3306
+            user: wikijs
+            pass: supir-pupir-password
+            db: wikijs
+            ssl: false
+          trustProxy: false
+          ssl:
+            enabled: false
+            format: pem
+            key: path/to/key.pem
+            cert: path/to/cert.pem
+            pfx: path/to/cert.pfx
+            passphrase: null
+            dhparam: null
+            redirectNonSSLPort: 80
+          pool:
+          bindIP: 0.0.0.0
+          logLevel: info
+          uploads:
+            maxFileSize: 5242880
+            maxFiles: 10
+          offline: false
+
+    - name: Install the Python MySQLB module
+      pip:
+        name: PyMySQL 
+
+    - name: Change password for user 'root'@'localhost'
+      mysql_user:
+        name: root
+        host: 'localhost'
+        check_implicit_admin: yes
+        password: humpty-dumpty
+        state: present
+    
+    - name: Create database user with name 'wikijs' and password 'supir-pupir-password' with all database privileges
+      mysql_user:
+        name: wikijs
+        host: 'localhost'
+        password: supir-pupir-password
+        login_user: root
+        login_password: humpty-dumpty
+        state: present    
+
+    - name: Create a new database with name 'wikijs'
+      mysql_db:
+        name: wikijs
+        login_user: wikijs
+        login_password: supir-pupir-password        
+        state: present
+        collation: utf8_general_ci
+
+    - name: Install pm2
+      npm:
+        name: pm2
+        global: yes
+        state: present
+
+    - name: Start service
+      command: pm2 start server
+      args:
+        chdir: /var/www/wiki/
+        creates: /var/www/wikijs/isstarted
+
+    - name: Startup configuration
+      command: pm2 startup
+      args:
+        chdir: /var/www/wiki/
+        creates: /var/www/wikijs/isstarted
+
+
+    - name: Freeze a process for automatic respawn
+      command: pm2 save
+      args:
+        chdir: /var/www/wiki/
+        creates: /var/www/wikijs/isstarted
