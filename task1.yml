@@ -92,7 +92,7 @@
         
     - name: Install NGINX (deb)
       apt:
-        name: nginx=1.16.0-1~{{ ansible_facts['distribution']_release }}
+        name: nginx=1.16.0-1~{{ ansible_facts['distribution_release'] }}
         state: present
       when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'
 
