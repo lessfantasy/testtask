@@ -1,4 +1,4 @@
-- hosts: {{ target }}
+- hosts: '{{ target }}'
   user: root
   tasks:
     - name: Update apt cache (deb)
@@ -43,22 +43,28 @@
       when: ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'Red Hat Enterprise Linux'
 
     - name: Add nodesource repository (deb)
-      command: curl -sL https://deb.nodesource.com/setup_10.x | bash -
+      shell: 'curl -sL https://deb.nodesource.com/setup_10.x | bash -'
+      args:
+        warn: no
       when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'
 
     - name: Add nodesource repository (rpm)
-      command: curl -sL https://rpm.nodesource.com/setup_10.x | bash -
-      when: ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'Red Hat Enterprise Linux'    
+      shell: 'curl -sL https://rpm.nodesource.com/setup_10.x | bash -'
+      args:
+        warn: no
+      when: ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'Red Hat Enterprise Linux'
 
     - name: Add MariaDB repository
-      command: curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | sudo bash -
+      shell: 'curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | bash -'
+      args:
+        warn: no
       when: ansible_facts['distribution'] == 'CentOS' or ansible_facts['distribution'] == 'Red Hat Enterprise Linux'
 
     - name: Update apt cache (deb)
       apt:
         update_cache: yes
         state: present
-      when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'    
+      when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'
 
     - name: Install rest of software
       package:
@@ -66,8 +72,18 @@
       vars:
         packages:
           - mariadb-server
-          - mariadb-client
           - nodejs
+
+    - name: Starting mysql service
+      service:
+        name: mysql
+        state: started
+
+    - name: Create folder for project
+      file:
+        path: /var/www/wiki/
+        state: directory
+        mode: '0755'
 
     - name: Download and extract archive
       unarchive:
@@ -109,32 +125,51 @@
 
     - name: Install the Python MySQLB module
       pip:
-        name: PyMySQL 
+        name: PyMySQL
 
     - name: Change password for user 'root'@'localhost'
-      mysql_user:
-        name: root
-        host: 'localhost'
-        check_implicit_admin: yes
-        password: humpty-dumpty
-        state: present
-    
-    - name: Create database user with name 'wikijs' and password 'supir-pupir-password' with all database privileges
+      shell: mysql -uroot -e "SET PASSWORD FOR 'root'@'localhost' = PASSWORD('super-password')"
+      args:
+        warn: no
+
+    - name: Remove plugins for root
+      shell: mysql -uroot -e "update mysql.user set plugin='' where user='root'"
+      args:
+        warn: no
+      when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'
+
+    - name: Remove plugins for root
+      shell: mysql -uroot -e "flush privileges"
+      args:
+        warn: no
+      when: ansible_facts['distribution'] == 'Debian' or ansible_facts['distribution'] == 'Ubuntu'
+
+    - name: Create database user with name 'wikijs' and password 'supir-pupir-password'
       mysql_user:
         name: wikijs
-        host: 'localhost'
+        host: localhost
         password: supir-pupir-password
         login_user: root
-        login_password: humpty-dumpty
-        state: present    
+        login_password: super-password
+        state: present
 
     - name: Create a new database with name 'wikijs'
       mysql_db:
         name: wikijs
-        login_user: wikijs
-        login_password: supir-pupir-password        
+        login_user: root
+        login_password: super-password
         state: present
         collation: utf8_general_ci
+
+    - name: Grant access to wikijs database for user wikijs
+      mysql_user:
+        name: wikijs
+        host: 'localhost'
+        password: supir-pupir-password
+        priv: 'wikijs.*:ALL'
+        login_user: root
+        login_password: super-password
+        state: present
 
     - name: Install pm2
       npm:
